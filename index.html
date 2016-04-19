@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dumping Example</title>
+  <meta charset="UTF-8">
+  <script src="https://code.jquery.com/jquery-2.2.0.min.js"></script>
+  <!-- look and feel -->
+  <link rel="stylesheet" type="text/css" href="//ausftas.github.io/example-api-common/style.css">
+  <link rel="stylesheet" type="text/css" href="http://blog.dfilimonov.com/github-ribbons-css/ribbons.css">
+  <script src="//ausftas.github.io/example-api-common/style.js"></script>
+  <!-- shared sources -->
+  <script src="//ausftas.github.io/example-api-common/common.js"></script>
+  <!-- excel writing -->
+  <script src="http://oss.sheetjs.com/js-xlsx/shim.js"></script>
+  <script src="http://oss.sheetjs.com/js-xlsx/jszip.js"></script>
+  <script src="http://oss.sheetjs.com/js-xlsx/xlsx.js"></script>
+</head>
+<body>
+  <div id="header"></div>
+  
+  <div id="example" class="content">
+    <h1>API Data Dump Example</h1>
+  
+    <div id="loading">
+      Please wait while it loads.
+    </div>
+    <!-- ----------------------------------------------------------------- -->
+    <!-- Part 1: Selection of agreeement, country -->
+    <!-- ----------------------------------------------------------------- -->
+    <div id="agreements" style="display: hide;">
+      <h2>Select Agreement And Country</h2>
+      Please select an agreement:
+      <select id="agreementSelection">
+      </select>
+
+      <div id="countries" style="display: hide;">
+        Please select a country:
+        <select id="countrySelection">
+        </select>
+        <br />
+        <button id="dumpCountry">Dump</button>
+      </div>
+    </div>
+    <script>
+      // we will have populated this by the end
+      var agreements = null;
+      var hierarchy = null;
+      var selectedAgreement = null;
+      var selectedCountry = null;
+      
+      // load and show a list of agreements
+      $(document).ready(function()
+      {
+        $.invoke('/tariffs/agreements', function(agreements_)
+        {
+          console.log(agreements_);
+          agreements = agreements_;
+          $('#agreementSelection').html(Object.keys(agreements).sort().map(function(agreement)
+          {
+            return '<option value="' + agreement + '">' + agreement + ' - ' + agreements[agreement].agreementFullName + '</option>';
+          }).join(''));
+          
+          $('#agreementSelection').change();
+          $('#agreements').show();
+        });
+        
+        $.invoke('/tariffs/hierarchy', function(hierarchy_)
+        {
+          hierarchy = hierarchy_;
+          $('#countries').show();
+          $('#loading').hide();
+        });
+      });
+      
+      $('#agreementSelection').change(function()
+      {
+        selectedAgreement = $('#agreementSelection').val();
+        var countries = agreements[selectedAgreement].countries;
+        
+        $('#countrySelection').html(Object.keys(countries).sort().map(function(country)
+        {
+          return '<option value="' + country + '">' + country + ' - ' + countries[country].countryFullName + '</option>';
+        }).join(''));
+        
+        $('#countrySelection').change();
+        $('#countries').show();
+      });
+      
+      $('#countrySelection').change(function()
+      {
+        selectedCountry = $('#countrySelection').val();
+      });
+    </script>
+    
+    <!-- ----------------------------------------------------------------- -->
+    <!-- Part 2: Download data -->
+    <!-- ----------------------------------------------------------------- -->
+    
+    <div id="loadingData" style="display: none;">
+      <h2>Downloading...</h2>
+      <div id="loadingIndicator"></div>
+    </div>
+    
+    <script>
+      var headingData = {};
+      
+      function updateLoading()
+      {
+        $('#loadingIndicator').html(Object.keys(headingData).filter(function(f){return headingData[f] === false;}).sort().join(' '));
+      }
+      
+      $('#dumpCountry').click(function()
+      {
+        $('#loadingData').show();
+        $('#downloadData').hide();
+        $('#agreements').hide();
+        
+        Object.keys(hierarchy).filter(function(item){
+          return hierarchy[item].type === 'heading';
+        }).forEach(function(heading)
+        {
+          if (headingData[heading] === undefined)
+          {
+            headingData[heading] = false;
+            $.invoke('/tariffs/heading/' + heading, function(headingData_)
+            {
+              headingData[heading] = headingData_;
+              updateLoading();
+              if (Object.keys(headingData).filter(function(f){return headingData[f] === false;}).length === 0)
+              {
+                dumpData();
+              }
+            });
+          }
+        });
+        
+        if (Object.keys(headingData).filter(function(f){return headingData[f] === false;}).length === 0)
+        {
+          dumpData();
+        }
+        
+        updateLoading();
+      });
+  </script>
+  
+    <!-- ----------------------------------------------------------------- -->
+    <!-- Part 3: Dump data -->
+    <!-- ----------------------------------------------------------------- -->
+  
+    <div id="dumpingData" style="display: none;">
+      <h2>Dumping...</h2>
+    </div>
+    
+    <script src="formula.js"></script>
+    <script src="psr.js"></script>
+    
+    <script>
+      
+      function dumpData()
+      {
+        $('#dumpingData').show();
+        $('#loadingData').hide();
+        
+        // accumulate all data
+        
+        var headings = ['agreement', 'country', 'hs2012', 'description'];
+        var output = [];
+        
+        var agreementData = agreements[selectedAgreement];
+        var countryData = agreementData.countries[selectedCountry];
+        
+        Object.keys(headingData).sort().forEach(function(heading)
+        {
+          if (hierarchy[heading].agreements.indexOf(selectedAgreement) === -1 || hierarchy[heading].countries.indexOf(selectedCountry) === -1)
+          {
+            console.log('NO DATA FOR', heading, hierarchy[heading], selectedAgreement, selectedCountry);
+          }
+          else
+          {
+            var data = headingData[heading][selectedCountry][selectedAgreement];
+            
+            Object.keys(data).sort().forEach(function(hs)
+            {
+              var row = data[hs];
+              var out = {
+                hs2012: row.tariffs? beautifyHSCode(hs) : '',
+                agreement: selectedAgreement,
+                country: selectedCountry,
+                description: row.description
+              };
+              
+              if (row.tariffs)
+              {
+                row = row.tariffs;
+                out.base_rate = TariffFormula.parse(row.default.baseRate).friendly;
+                row.default.rates.forEach(function (rate, index)
+                {
+                  out['tariff_rate_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
+                });
+                if (row.default.notes)
+                {
+                  out.tariff_rate_notes = row.default.notes;
+                }
+                if (row.quota)
+                {
+                  row.quota.quantity.forEach(function (rate, index)
+                  {
+                    out['tariff_quota_quantity_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
+                  });
+                  row.quota.outRates.forEach(function (rate, index)
+                  {
+                    out['tariff_quota_rate_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
+                  });
+                  if (row.quota.notes)
+                  {
+                    out.tariff_quota_notes = row.quota.notes;
+                  }
+                }
+                if (row.safeguard)
+                {
+                  row.safeguard.quantity.forEach(function (rate, index)
+                  {
+                    out['tariff_safeguard_quantity_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
+                  });
+                  row.safeguard.outRates.forEach(function (rate, index)
+                  {
+                    out['tariff_safeguard_rate_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
+                  });
+                  if (row.safeguard.notes)
+                  {
+                    out.tariff_safeguard_notes = row.safeguard.notes;
+                  }
+                }
+                TariffPSR.parse(row.productSpecificRules, agreementData.rulesOfOrigin).categories.forEach(function(cat)
+                {
+                  if (cat.friendlyRules)
+                  {
+                    out['productSpecificRules_' + cat.itemIf] = cat.friendlyRules;
+                  }
+                });
+              }
+              output.push(out);
+            });
+          }
+        });
+        
+        output.forEach(function(row)
+        {
+          Object.keys(row).forEach(function(head)
+          {
+            if (headings.indexOf(head) === -1)
+            {
+              headings.push(head);
+            }
+          });
+        });
+        
+        // write excel file
+        
+        var wb = {
+          Sheets : {},
+          SheetNames: []
+        };
+        
+        var ws = {};
+        
+        var row = 0;
+        headings.forEach(function (head, index)
+        {
+          ws[XLSX.utils.encode_cell({c: index, r: row})] = {
+            t: 's',
+            v: head
+          };
+        });
+        row++;
+        
+        output.forEach(function(item)
+        {
+          Object.keys(item).forEach(function(head)
+          {
+            ws[XLSX.utils.encode_cell({c: headings.indexOf(head), r: row})] = {
+              t: 's',
+              v: item[head]
+            };
+          });
+          row++;
+        });
+        
+        ws['!ref'] = XLSX.utils.encode_range({
+          s: {
+            c: 0,
+            r: 0
+          },
+          e: {
+            c: headings.length,
+            r: output.length + 1
+          }
+        });
+        
+        var ws_name = selectedAgreement + '_' + selectedCountry;
+        wb.SheetNames.push(ws_name);
+        wb.Sheets[ws_name] = ws;
+        
+        var wopts = {
+          bookType: 'xlsx',
+          bookSST:false,
+          type:'binary'
+        };
+        
+        downloadData(XLSX.write(wb, wopts), ws_name + '.xlsx');
+      }
+      
+      function beautifyHSCode(code, showLabel)
+      {
+        var hscode = code.replace(/[^0-9]/g, '');
+        switch (hscode.length)
+        {
+        case 0:
+          return (showLabel ? 'Section ' : '') + code;
+        case 1:
+        case 2:
+          return (showLabel ? 'Chapter ' : '') + hscode;
+        case 3:
+        case 4:
+          return (showLabel ? 'Heading ' : '') + hscode;
+        case 5:
+        case 6:
+          return (showLabel ? 'Subheading ' : '') + hscode.substr(0, 4) + '.' + hscode.substr(4);
+        default:
+          return (showLabel ? 'Item ' : '') + hscode.substr(0, 4) + '.' + hscode.substr(4, 2) + '.' + hscode.substr(6);
+        }
+      }
+    </script>
+    
+    <div id="downloadData" style="display: none;">
+      <h2>Download</h2>
+      <a id="downloadLink">Download</a>
+    </div>
+    
+    <script>
+    function downloadData(data, filename)
+    {
+      // http://stackoverflow.com/questions/10473932/browser-html-force-download-of-image-from-src-dataimage-jpegbase64
+      data = atob(data);
+      var arraybuffer = new ArrayBuffer(data.length);
+      var view = new Uint8Array(arraybuffer);
+      for (var i=0; i<data.length; i++) {
+          view[i] = data.charCodeAt(i) & 0xff;
+      }
+      try
+      {
+        // This is the recommended method:
+        var blob = new Blob([arraybuffer], {type: 'application/octet-stream'});
+      } catch (e) {
+          // The BlobBuilder API has been deprecated in favour of Blob, but older
+          // browsers don't know about the Blob constructor
+          // IE10 also supports BlobBuilder, but since the `Blob` constructor
+          //  also works, there's no need to add `MSBlobBuilder`.
+          var bb = new (window.WebKitBlobBuilder || window.MozBlobBuilder);
+          bb.append(arraybuffer);
+          var blob = bb.getBlob('application/octet-stream'); // <-- Here's the Blob
+      }
+      var url = (window.webkitURL || window.URL).createObjectURL(blob);
+      $('#downloadLink').attr('href', url);
+      $('#downloadLink').attr('download', filename);
+      $('#downloadData').show();
+      $('#dumpingData').hide();
+      $('#agreements').show();
+    }
+    </script>
+  
+  <div id="footer"></div>
+  
+  
+</body>
+</html>
