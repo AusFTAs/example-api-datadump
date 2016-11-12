@@ -1,7 +1,7 @@
 # Excel Data Dump | Free Trade Agreement Portal API
 
-This example accesses the FTA Portal API through jQuery. It gets data of all
-items from the API and dumps it into an excel file.
+This example accesses the FTA Portal API. It gets data of all
+items from the API and dumps it into Excel files.
 
 ## Source code
 
@@ -14,7 +14,6 @@ items from the API and dumps it into an excel file.
 ## Demo
 
 * [index.html](http://ausftas.github.io/example-api-datadump/)
-* [stats.html](http://ausftas.github.io/example-api-datadump/stats.html)
 
 ## Additional Documentation
 
