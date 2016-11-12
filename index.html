@@ -3,13 +3,17 @@
 <head>
   <title>Dumping Example</title>
   <meta charset="UTF-8">
-  <script src="https://code.jquery.com/jquery-2.2.0.min.js"></script>
+  <!-- Babel, d3 and friends. B -->
+  <script src="/example-api-common/babel.min.js"></script>
+  <script src="/example-api-common/d3.v4.js"></script>
   <!-- look and feel -->
-  <link rel="stylesheet" type="text/css" href="//ausftas.github.io/example-api-common/style.css">
   <link rel="stylesheet" type="text/css" href="http://blog.dfilimonov.com/github-ribbons-css/ribbons.css">
-  <script src="//ausftas.github.io/example-api-common/style.js"></script>
+  <link rel="stylesheet" type="text/css" href="/example-api-common/style.css">
+  <script type="text/babel" data-presets="es2015" src="/example-api-common/style.js"></script>
   <!-- shared sources -->
-  <script src="//ausftas.github.io/example-api-common/common.js"></script>
+  <script type="text/babel" data-presets="es2015" src="/example-api-common/common.js"></script>
+  <script src="/example-api-common/formula.js"></script>
+  <script src="/example-api-common/psr.js"></script>
   <!-- excel writing -->
   <script src="http://oss.sheetjs.com/js-xlsx/shim.js"></script>
   <script src="http://oss.sheetjs.com/js-xlsx/jszip.js"></script>
@@ -24,179 +28,108 @@
     <div id="loading">
       Please wait while it loads.
     </div>
-    <!-- ----------------------------------------------------------------- -->
-    <!-- Part 1: Selection of agreeement, country -->
-    <!-- ----------------------------------------------------------------- -->
-    <div id="agreements" style="display: hide;">
-      <h2>Select Agreement And Country</h2>
-      Please select an agreement:
-      <select id="agreementSelection">
-      </select>
 
-      <div id="countries" style="display: hide;">
-        Please select a country:
-        <select id="countrySelection">
-        </select>
-        <br />
-        <button id="dumpCountry">Dump</button>
-      </div>
-    </div>
-    <script>
-      // we will have populated this by the end
-      var agreements = null;
-      var hierarchy = null;
-      var selectedAgreement = null;
-      var selectedCountry = null;
-      
-      // load and show a list of agreements
-      $(document).ready(function()
-      {
-        $.invoke('/tariffs/agreements', function(agreements_)
-        {
-          console.log(agreements_);
-          agreements = agreements_;
-          $('#agreementSelection').html(Object.keys(agreements).sort().map(function(agreement)
-          {
-            return '<option value="' + agreement + '">' + agreement + ' - ' + agreements[agreement].agreementFullName + '</option>';
-          }).join(''));
-          
-          $('#agreementSelection').change();
-          $('#agreements').show();
-        });
-        
-        $.invoke('/tariffs/hierarchy', function(hierarchy_)
-        {
-          hierarchy = hierarchy_;
-          $('#countries').show();
-          $('#loading').hide();
-        });
-      });
-      
-      $('#agreementSelection').change(function()
-      {
-        selectedAgreement = $('#agreementSelection').val();
-        var countries = agreements[selectedAgreement].countries;
-        
-        $('#countrySelection').html(Object.keys(countries).sort().map(function(country)
-        {
-          return '<option value="' + country + '">' + country + ' - ' + countries[country].countryFullName + '</option>';
-        }).join(''));
-        
-        $('#countrySelection').change();
-        $('#countries').show();
-      });
-      
-      $('#countrySelection').change(function()
-      {
-        selectedCountry = $('#countrySelection').val();
-      });
-    </script>
+    <h2>Select Agreement</h2>
+    <p>
+      Please select an agreement:
+      <select id="agreementSelection"></select>
+    </p>
     
-    <!-- ----------------------------------------------------------------- -->
-    <!-- Part 2: Download data -->
-    <!-- ----------------------------------------------------------------- -->
+    <h2>Select Country</h2>  
+    <p>Please select a country:
+        <select id="countrySelection"></select>
+    </p>
+    <h2>Dump Data</h2>  
+    <p>
+      <button id="dumpData">Dump</button>
+      <div id="dumpDownloadData" style="display: none;">Downloading...</div>
+      <div id="dumpDumpData" style="display: none;">Dumping...</div>
+    </p>
     
-    <div id="loadingData" style="display: none;">
-      <h2>Downloading...</h2>
-      <div id="loadingIndicator"></div>
+    <h2 class="download" style="display: none;">Download</h2>
+    <div class="download" id="downloads" style="display: none;">
     </div>
     
-    <script>
-      var headingData = {};
+    <script type="text/babel" data-presets="es2015">
       
-      function updateLoading()
+      FTAPortalAPIExample.start(function(hierarchy, agreements)
       {
-        $('#loadingIndicator').html(Object.keys(headingData).filter(function(f){return headingData[f] === false;}).sort().join(' '));
-      }
-      
-      $('#dumpCountry').click(function()
-      {
-        $('#loadingData').show();
-        $('#downloadData').hide();
-        $('#agreements').hide();
+        let agreement = '';
+        let country = '';
         
-        Object.keys(hierarchy).filter(function(item){
-          return hierarchy[item].type === 'heading';
-        }).forEach(function(heading)
+        function showAgreementSelection()
         {
-          if (headingData[heading] === undefined)
-          {
-            headingData[heading] = false;
-            $.invoke('/tariffs/heading/' + heading, function(headingData_)
-            {
-              headingData[heading] = headingData_;
-              updateLoading();
-              if (Object.keys(headingData).filter(function(f){return headingData[f] === false;}).length === 0)
-              {
-                dumpData();
-              }
-            });
-          }
-        });
-        
-        if (Object.keys(headingData).filter(function(f){return headingData[f] === false;}).length === 0)
-        {
-          dumpData();
+          const agreementSelection = d3.select('#agreementSelection').html('');
+          agreementSelection.selectAll().data(Object.keys(agreements)).enter().option(x => agreements[x].agreementFullName).attr('value', x => x);
+          agreementSelection.on('change', null).on('change', () => showCountrySelection(agreement = agreementSelection.value()));
+          agreement = Object.keys(agreements)[0];
+          agreementSelection.value(agreement);
+          showCountrySelection();
         }
         
-        updateLoading();
-      });
-  </script>
-  
-    <!-- ----------------------------------------------------------------- -->
-    <!-- Part 3: Dump data -->
-    <!-- ----------------------------------------------------------------- -->
-  
-    <div id="dumpingData" style="display: none;">
-      <h2>Dumping...</h2>
-    </div>
-    
-    <script src="formula.js"></script>
-    <script src="psr.js"></script>
-    
-    <script>
-      
-      function dumpData()
-      {
-        $('#dumpingData').show();
-        $('#loadingData').hide();
         
-        // accumulate all data
-        
-        var headings = ['agreement', 'country', 'hs2012', 'description'];
-        var output = [];
-        
-        var agreementData = agreements[selectedAgreement];
-        var countryData = agreementData.countries[selectedCountry];
-        
-        Object.keys(headingData).sort().forEach(function(heading)
+        function showCountrySelection()
         {
-          if (hierarchy[heading].agreements.indexOf(selectedAgreement) === -1 || hierarchy[heading].countries.indexOf(selectedCountry) === -1)
+          let countries = agreements[agreement].countries;
+          const countrySelection = d3.select('#countrySelection').html('');
+          countrySelection.selectAll().data(Object.keys(countries)).enter().option(x => countries[x].countryFullName).attr('value', x => x);
+          countrySelection.on('change', null).on('change', () => country = countrySelection.value());
+          if (countries[country] === undefined)
           {
-            console.log('NO DATA FOR', heading, hierarchy[heading], selectedAgreement, selectedCountry);
+            country = Object.keys(countries)[0];
           }
-          else
+          countrySelection.value(country);
+        }
+        
+        function dumpData()
+        {
+          d3.select('#dumpData').hide();
+          d3.select('#dumpDownloadData').show();
+          let wishlist = [];
+          wishlist.push(FTAPortalAPIExample.invoke(`/tariffs/agreement/${agreement}`));
+          Object.keys(hierarchy)
+            .filter(hs => hierarchy[hs].type === 'heading')
+            .filter(hs => hierarchy[hs].countryAgreements.find(countryAgreement => countryAgreement.agreement === agreement && countryAgreement.country === country))
+            .sort()
+            .forEach(heading => wishlist.push(FTAPortalAPIExample.invoke(`/tariffs/${country}/${agreement}/heading/${heading}`)));
+          Promise.all(wishlist).then(data =>
           {
-            var data = headingData[heading][selectedCountry][selectedAgreement];
-            
-            Object.keys(data).sort().forEach(function(hs)
+            d3.select('#dumpDownloadData').hide();
+            d3.select('#dumpDumpData').show();
+            dumpDumpData(data[0], data.slice(1));
+          });
+        }
+        
+        function dumpDumpData(agreementData, subheadingsData)
+        {
+          let headings = ['agreement', 'country', 'hs2012', 'description'];
+          let output = [];
+          
+          let countryData = agreementData.countries[country];
+          subheadingsData.forEach(subheadingData =>
+          {
+            for (let hs in subheadingData)
             {
-              var row = data[hs];
-              var out = {
-                hs2012: row.tariffs? beautifyHSCode(hs) : '',
-                agreement: selectedAgreement,
-                country: selectedCountry,
+              let row = subheadingData[hs];
+              let out = {
+                hs2012: row.tariffs? FTAPortalAPIExample.uglifyHSCode(hs, false, true) : '',
+                agreement: agreement,
+                country: country,
                 description: row.description
               };
               
               if (row.tariffs)
               {
                 row = row.tariffs;
-                out.base_rate = TariffFormula.parse(row.default.baseRate).friendly;
+                if (row.default.baseRate)
+                {
+                  out.base_rate = TariffFormula.parse(row.default.baseRate).friendly;
+                }
                 row.default.rates.forEach(function (rate, index)
                 {
                   out['tariff_rate_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
                 });
+                
                 if (row.default.notes)
                 {
                   out.tariff_rate_notes = row.default.notes;
@@ -231,7 +164,7 @@
                     out.tariff_safeguard_notes = row.safeguard.notes;
                   }
                 }
-                TariffPSR.parse(row.productSpecificRules, agreementData.rulesOfOrigin).categories.forEach(function(cat)
+                TariffPSR.parse(row.productSpecificRules, agreementData.rulesOfOrigin, {hscode: hs}).categories.forEach(function(cat)
                 {
                   if (cat.friendlyRules)
                   {
@@ -240,137 +173,117 @@
                 });
               }
               output.push(out);
-            });
-          }
-        });
-        
-        output.forEach(function(row)
-        {
-          Object.keys(row).forEach(function(head)
-          {
-            if (headings.indexOf(head) === -1)
-            {
-              headings.push(head);
             }
           });
-        });
-        
-        // write excel file
-        
-        var wb = {
-          Sheets : {},
-          SheetNames: []
-        };
-        
-        var ws = {};
-        
-        var row = 0;
-        headings.forEach(function (head, index)
-        {
-          ws[XLSX.utils.encode_cell({c: index, r: row})] = {
-            t: 's',
-            v: head
-          };
-        });
-        row++;
-        
-        output.forEach(function(item)
-        {
-          Object.keys(item).forEach(function(head)
+          
+          output.forEach(row =>
           {
-            ws[XLSX.utils.encode_cell({c: headings.indexOf(head), r: row})] = {
+            Object.keys(row).forEach(head =>
+            {
+              if (headings.indexOf(head) === -1)
+              {
+                headings.push(head);
+              }
+            });
+          });
+          
+          dumpExcelData(headings, output);
+          
+        }
+        
+        function dumpExcelData(headings, output)
+        {
+          let wb = {
+            Sheets : {},
+            SheetNames: []
+          };
+          
+          let ws = {};
+          
+          let row = 0;
+          headings.forEach((head, index) =>
+          {
+            ws[XLSX.utils.encode_cell({c: index, r: row})] = {
               t: 's',
-              v: item[head]
+              v: head
             };
           });
           row++;
-        });
-        
-        ws['!ref'] = XLSX.utils.encode_range({
-          s: {
-            c: 0,
-            r: 0
-          },
-          e: {
-            c: headings.length,
-            r: output.length + 1
-          }
-        });
-        
-        var ws_name = selectedAgreement + '_' + selectedCountry;
-        wb.SheetNames.push(ws_name);
-        wb.Sheets[ws_name] = ws;
-        
-        var wopts = {
-          bookType: 'xlsx',
-          bookSST:false,
-          type:'binary'
-        };
-        
-        downloadData(XLSX.write(wb, wopts), ws_name + '.xlsx');
-      }
-      
-      function beautifyHSCode(code, showLabel)
-      {
-        var hscode = code.replace(/[^0-9]/g, '');
-        switch (hscode.length)
-        {
-        case 0:
-          return (showLabel ? 'Section ' : '') + code;
-        case 1:
-        case 2:
-          return (showLabel ? 'Chapter ' : '') + hscode;
-        case 3:
-        case 4:
-          return (showLabel ? 'Heading ' : '') + hscode;
-        case 5:
-        case 6:
-          return (showLabel ? 'Subheading ' : '') + hscode.substr(0, 4) + '.' + hscode.substr(4);
-        default:
-          return (showLabel ? 'Item ' : '') + hscode.substr(0, 4) + '.' + hscode.substr(4, 2) + '.' + hscode.substr(6);
+          
+          output.forEach(item =>
+          {
+            Object.keys(item).forEach(head =>
+            {
+              ws[XLSX.utils.encode_cell({c: headings.indexOf(head), r: row})] = {
+                t: 's',
+                v: item[head]
+              };
+            });
+            row++;
+          });
+          
+          ws['!ref'] = XLSX.utils.encode_range({
+            s: {
+              c: 0,
+              r: 0
+            },
+            e: {
+              c: headings.length,
+              r: output.length + 1
+            }
+          });
+          
+          let ws_name = agreement + '_' + country;
+          wb.SheetNames.push(ws_name);
+          wb.Sheets[ws_name] = ws;
+          
+          let wopts = {
+            bookType: 'xlsx',
+            bookSST:false,
+            type:'binary'
+          };
+          
+          downloadData(XLSX.write(wb, wopts), ws_name + '.xlsx');
         }
-      }
-    </script>
-    
-    <div id="downloadData" style="display: none;">
-      <h2>Download</h2>
-      <a id="downloadLink">Download</a>
-    </div>
-    
-    <script>
-    function downloadData(data, filename)
-    {
-      // http://stackoverflow.com/questions/10473932/browser-html-force-download-of-image-from-src-dataimage-jpegbase64
-      data = atob(data);
-      var arraybuffer = new ArrayBuffer(data.length);
-      var view = new Uint8Array(arraybuffer);
-      for (var i=0; i<data.length; i++) {
-          view[i] = data.charCodeAt(i) & 0xff;
-      }
-      try
-      {
-        // This is the recommended method:
-        var blob = new Blob([arraybuffer], {type: 'application/octet-stream'});
-      } catch (e) {
-          // The BlobBuilder API has been deprecated in favour of Blob, but older
-          // browsers don't know about the Blob constructor
-          // IE10 also supports BlobBuilder, but since the `Blob` constructor
-          //  also works, there's no need to add `MSBlobBuilder`.
-          var bb = new (window.WebKitBlobBuilder || window.MozBlobBuilder);
-          bb.append(arraybuffer);
-          var blob = bb.getBlob('application/octet-stream'); // <-- Here's the Blob
-      }
-      var url = (window.webkitURL || window.URL).createObjectURL(blob);
-      $('#downloadLink').attr('href', url);
-      $('#downloadLink').attr('download', filename);
-      $('#downloadData').show();
-      $('#dumpingData').hide();
-      $('#agreements').show();
-    }
+        
+        function downloadData(data, filename)
+        {
+          // http://stackoverflow.com/questions/10473932/browser-html-force-download-of-image-from-src-dataimage-jpegbase64
+          data = atob(data);
+          var arraybuffer = new ArrayBuffer(data.length);
+          var view = new Uint8Array(arraybuffer);
+          for (var i=0; i<data.length; i++) {
+              view[i] = data.charCodeAt(i) & 0xff;
+          }
+          try
+          {
+            // This is the recommended method:
+            var blob = new Blob([arraybuffer], {type: 'application/octet-stream'});
+          } catch (e) {
+              // The BlobBuilder API has been deprecated in favour of Blob, but older
+              // browsers don't know about the Blob constructor
+              // IE10 also supports BlobBuilder, but since the `Blob` constructor
+              //  also works, there's no need to add `MSBlobBuilder`.
+              var bb = new (window.WebKitBlobBuilder || window.MozBlobBuilder);
+              bb.append(arraybuffer);
+              var blob = bb.getBlob('application/octet-stream'); // <-- Here's the Blob
+          }
+          var url = (window.webkitURL || window.URL).createObjectURL(blob);
+          
+          d3.select('#downloads').a(filename).attr('href', url).classed('downloadLink', true).attr('download', filename);
+          d3.select('#dumpDumpData').hide();
+          d3.select('#dumpData').show();
+          d3.selectAll('.download').show();
+        }
+        
+        showAgreementSelection();
+        
+        d3.select('#dumpData').on('click', dumpData);
+        
+      });
     </script>
   </div>
   <div id="footer"></div>
-  
-  
+
 </body>
 </html>
