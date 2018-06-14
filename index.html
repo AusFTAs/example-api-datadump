@@ -21,10 +21,10 @@
 </head>
 <body>
   <div id="header"></div>
-  
+
   <div id="example" class="content">
     <h1>API Data Dump Example</h1>
-  
+
     <div id="loading">
       Please wait while it loads.
     </div>
@@ -34,29 +34,30 @@
       Please select an agreement:
       <select id="agreementSelection"></select>
     </p>
-    
-    <h2>Select Country</h2>  
+
+    <h2>Select Country</h2>
     <p>Please select a country:
         <select id="countrySelection"></select>
     </p>
-    <h2>Dump Data</h2>  
+    <h2>Dump Data</h2>
     <p>
       <button id="dumpData">Dump</button>
       <div id="dumpDownloadData" style="display: none;">Downloading...</div>
       <div id="dumpDumpData" style="display: none;">Dumping...</div>
     </p>
-    
+
     <h2 class="download" style="display: none;">Download</h2>
     <div class="download" id="downloads" style="display: none;">
     </div>
-    
-    <script type="text/babel" data-presets="es2015">
-      
-      FTAPortalAPIExample.start(function(hierarchy, agreements)
+
+    <script type="text/babel">
+
+      FTAPortalAPIExample.start(async function(version, agreements)
       {
+        let hierarchy = await FTAPortalAPIExample.invoke('/products/hierarchy.json');
         let agreement = '';
         let country = '';
-        
+
         function showAgreementSelection()
         {
           const agreementSelection = d3.select('#agreementSelection').html('');
@@ -66,8 +67,8 @@
           agreementSelection.value(agreement);
           showCountrySelection();
         }
-        
-        
+
+
         function showCountrySelection()
         {
           let countries = agreements[agreement].countries;
@@ -80,18 +81,18 @@
           }
           countrySelection.value(country);
         }
-        
+
         function dumpData()
         {
           d3.select('#dumpData').hide();
           d3.select('#dumpDownloadData').show();
           let wishlist = [];
-          wishlist.push(FTAPortalAPIExample.invoke(`/tariffs/agreement/${agreement}`));
+          wishlist.push(FTAPortalAPIExample.invoke(`/products/tariffs/${country}/${agreement}/common.json`));
           Object.keys(hierarchy)
             .filter(hs => hierarchy[hs].type === 'heading')
             .filter(hs => hierarchy[hs].countryAgreements.find(countryAgreement => countryAgreement.agreement === agreement && countryAgreement.country === country))
             .sort()
-            .forEach(heading => wishlist.push(FTAPortalAPIExample.invoke(`/tariffs/${country}/${agreement}/heading/${heading}`)));
+            .forEach(heading => wishlist.push(FTAPortalAPIExample.invoke(`/products/tariffs/${country}/${agreement}/${heading}.json`)));
           Promise.all(wishlist).then(data =>
           {
             d3.select('#dumpDownloadData').hide();
@@ -99,12 +100,12 @@
             dumpDumpData(data[0], data.slice(1));
           });
         }
-        
+
         function dumpDumpData(agreementData, subheadingsData)
         {
           let headings = ['agreement', 'country', 'hs2012', 'description'];
           let output = [];
-          
+
           let countryData = agreementData.countries[country];
           subheadingsData.forEach(subheadingData =>
           {
@@ -117,7 +118,7 @@
                 country: country,
                 description: row.description
               };
-              
+
               if (row.tariffs)
               {
                 row = row.tariffs;
@@ -127,9 +128,9 @@
                 }
                 row.default.rates.forEach(function (rate, index)
                 {
-                  out['tariff_rate_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
+                  out['tariff_rate_after_' + agreementData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
                 });
-                
+
                 if (row.default.notes)
                 {
                   out.tariff_rate_notes = row.default.notes;
@@ -138,11 +139,11 @@
                 {
                   row.quota.quantity.forEach(function (rate, index)
                   {
-                    out['tariff_quota_quantity_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
+                    out['tariff_quota_quantity_after_' + agreementData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
                   });
                   row.quota.outRates.forEach(function (rate, index)
                   {
-                    out['tariff_quota_rate_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
+                    out['tariff_quota_rate_after_' + agreementData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
                   });
                   if (row.quota.notes)
                   {
@@ -153,11 +154,11 @@
                 {
                   row.safeguard.quantity.forEach(function (rate, index)
                   {
-                    out['tariff_safeguard_quantity_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
+                    out['tariff_safeguard_quantity_after_' + agreementData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
                   });
                   row.safeguard.outRates.forEach(function (rate, index)
                   {
-                    out['tariff_safeguard_rate_after_' + countryData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
+                    out['tariff_safeguard_rate_after_' + agreementData.tariffs.dates[index]] = TariffFormula.parse(rate).friendly;
                   });
                   if (row.safeguard.notes)
                   {
@@ -175,7 +176,7 @@
               output.push(out);
             }
           });
-          
+
           output.forEach(row =>
           {
             Object.keys(row).forEach(head =>
@@ -186,20 +187,20 @@
               }
             });
           });
-          
+
           dumpExcelData(headings, output);
-          
+
         }
-        
+
         function dumpExcelData(headings, output)
         {
           let wb = {
             Sheets : {},
             SheetNames: []
           };
-          
+
           let ws = {};
-          
+
           let row = 0;
           headings.forEach((head, index) =>
           {
@@ -209,7 +210,7 @@
             };
           });
           row++;
-          
+
           output.forEach(item =>
           {
             Object.keys(item).forEach(head =>
@@ -221,7 +222,7 @@
             });
             row++;
           });
-          
+
           ws['!ref'] = XLSX.utils.encode_range({
             s: {
               c: 0,
@@ -232,24 +233,24 @@
               r: output.length + 1
             }
           });
-          
+
           let ws_name = agreement + '_' + country;
           wb.SheetNames.push(ws_name);
           wb.Sheets[ws_name] = ws;
-          
+
           let wopts = {
             bookType: 'xlsx',
             bookSST:false,
             type:'binary'
           };
-          
+
           downloadData(XLSX.write(wb, wopts), ws_name + '.xlsx');
         }
-        
+
         function downloadData(data, filename)
         {
           // http://stackoverflow.com/questions/10473932/browser-html-force-download-of-image-from-src-dataimage-jpegbase64
-          data = atob(data);
+          //data = atob(data);
           var arraybuffer = new ArrayBuffer(data.length);
           var view = new Uint8Array(arraybuffer);
           for (var i=0; i<data.length; i++) {
@@ -269,17 +270,17 @@
               var blob = bb.getBlob('application/octet-stream'); // <-- Here's the Blob
           }
           var url = (window.webkitURL || window.URL).createObjectURL(blob);
-          
+
           d3.select('#downloads').a(filename).attr('href', url).classed('downloadLink', true).attr('download', filename);
           d3.select('#dumpDumpData').hide();
           d3.select('#dumpData').show();
           d3.selectAll('.download').show();
         }
-        
+
         showAgreementSelection();
-        
+
         d3.select('#dumpData').on('click', dumpData);
-        
+
       });
     </script>
   </div>
