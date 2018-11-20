@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dumping Example</title>
+  <meta charset="UTF-8">
+  <!-- Babel, d3 and friends. B -->
+  <script src="//ausftas.github.io/example-api-common/babel.min.js"></script>
+  <script src="//ausftas.github.io/example-api-common/d3.v4.js"></script>
+  <!-- look and feel -->
+  <link rel="stylesheet" type="text/css" href="http://blog.dfilimonov.com/github-ribbons-css/ribbons.css">
+  <link rel="stylesheet" type="text/css" href="//ausftas.github.io/example-api-common/style.css">
+  <script type="text/babel" data-presets="es2015" src="//ausftas.github.io/example-api-common/style.js"></script>
+  <!-- shared sources -->
+  <script type="text/babel" data-presets="es2015" src="//ausftas.github.io/example-api-common/common.js"></script>
+  <script src="//ausftas.github.io/example-api-common/formula.js"></script>
+  <script src="//ausftas.github.io/example-api-common/psr.js"></script>
+  <!-- excel writing -->
+  <script src="http://oss.sheetjs.com/js-xlsx/shim.js"></script>
+  <script src="http://oss.sheetjs.com/js-xlsx/jszip.js"></script>
+  <script src="http://oss.sheetjs.com/js-xlsx/xlsx.js"></script>
+</head>
+<body>
+  <div id="header"></div>
+
+  <div id="example" class="content">
+    <h1>API Data Dump Example</h1>
+
+    <div id="loading">
+      Please wait while it loads.
+    </div>
+
+    <h2>Select Agreement</h2>
+    <p>
+      Please select an agreement:
+      <select id="agreementSelection"></select>
+    </p>
+
+    <h2>Select Country</h2>
+    <p>Please select a country:
+        <select id="countrySelection"></select>
+    </p>
+    <h2>Dump Data</h2>
+    <p>
+      <button id="dumpData">Dump</button>
+      <div id="dumpDownloadData" style="display: none;">Downloading...</div>
+      <div id="dumpDumpData" style="display: none;">Dumping...</div>
+    </p>
+
+    <h2 class="download" style="display: none;">Download</h2>
+    <div class="download" id="downloads" style="display: none;">
+    </div>
+
+    <script type="text/babel">
+
+      FTAPortalAPIExample.start(async function(version, agreements)
+      {
+        let hierarchy = await FTAPortalAPIExample.invoke('/products/hierarchy.json');
+        let agreement = '';
+        let country = '';
+
+        function showAgreementSelection()
+        {
+          const agreementSelection = d3.select('#agreementSelection').html('');
+          agreementSelection.selectAll().data(Object.keys(agreements)).enter().option(x => agreements[x].agreementFullName).attr('value', x => x);
+          agreementSelection.on('change', null).on('change', () => showCountrySelection(agreement = agreementSelection.value()));
+          agreement = Object.keys(agreements)[0];
+          agreementSelection.value(agreement);
+          showCountrySelection();
+        }
+
+
+        function showCountrySelection()
+        {
+          let countries = agreements[agreement].countries;
+          const countrySelection = d3.select('#countrySelection').html('');
+          countrySelection.selectAll().data(Object.keys(countries)).enter().option(x => countries[x].countryFullName).attr('value', x => x);
+          countrySelection.on('change', null).on('change', () => country = countrySelection.value());
+          if (countries[country] === undefined)
+          {
+            country = Object.keys(countries)[0];
+          }
+          countrySelection.value(country);
+        }
+
+        function dumpData()
+        {
+          d3.select('#dumpData').hide();
+          d3.select('#dumpDownloadData').show();
+          let wishlist = [];
+          let headings = {};
+          wishlist.push(FTAPortalAPIExample.invoke(`/products/tariffs/${country}/${agreement}/common.json`));
+          Object.keys(hierarchy)
+            .filter(hs => hierarchy[hs].type === 'heading')
+            .filter(hs => hierarchy[hs].countryAgreements.find(countryAgreement => countryAgreement.agreement === agreement && countryAgreement.country === country))
+            .sort()
+            .forEach(heading => {
+				headings[heading] = wishlist.length;
+				wishlist.push(FTAPortalAPIExample.invoke(`/products/tariffs/${country}/${agreement}/${heading}.json`))
+			});
+
+          Promise.all(wishlist).then(data =>
+          {
+            d3.select('#dumpDownloadData').hide();
+            d3.select('#dumpDumpData').show();
+            for (const heading in headings) {
+				headings[heading] = data[headings[heading]];
+			}
+            dumpDumpData(data[0], headings);
+          });
+        }
+
+        function dumpDumpData(agreementData, subheadingsData)
+        {
+          let headings = ['agreement', 'country', 'order', 'indent', 'type', 'hs code', 'description',
+			'base rate', 'year 1 rate', 'year 2 rate', 'year 3 rate', 'year 4 rate', 'year 5 rate', 'year 6 rate', 'year 7 rate', 'year 8 rate', 'year 9 rate', 'year 10 rate', 'year 11 rate', 'year 12 rate', 'year 13 rate', 'year 14 rate', 'year 15 rate', 'year 16 rate', 'year 17 rate', 'year 18 rate', 'year 19 rate', 'year 20 rate', 'year 21 rate', 'rate explanation override', 'no chart indicator', 'no data indicator', 'graph despite complex indicator',
+			'product specific wholly obtained rules', 'product specific rules', 'product specific chemical rules', 'product specific de minimis rules',
+			'year 1 quota volume', 'year 2 quota volume', 'year 3 quota volume', 'year 4 quota volume', 'year 5 quota volume', 'year 6 quota volume', 'year 7 quota volume', 'year 8 quota volume', 'year 9 quota volume', 'year 10 quota volume', 'year 11 quota volume', 'year 12 quota volume', 'year 13 quota volume', 'year 14 quota volume', 'year 15 quota volume', 'year 16 quota volume', 'year 17 quota volume', 'year 18 quota volume', 'year 19 quota volume', 'year 20 quota volume', 'year 21 quota volume', 'year 1 out quota rate', 'year 2 out quota rate', 'year 3 out quota rate', 'year 4 out quota rate', 'year 5 out quota rate', 'year 6 out quota rate', 'year 7 out quota rate', 'year 8 out quota rate', 'year 9 out quota rate', 'year 10 out quota rate', 'year 11 out quota rate', 'year 12 out quota rate', 'year 13 out quota rate', 'year 14 out quota rate', 'year 15 out quota rate', 'year 16 out quota rate', 'year 17 out quota rate', 'year 18 out quota rate', 'year 19 out quota rate', 'year 20 out quota rate', 'year 21 out quota rate', 'quota notes',
+			'year 1 safeguard trigger volume', 'year 2 safeguard trigger volume', 'year 3 safeguard trigger volume', 'year 4 safeguard trigger volume', 'year 5 safeguard trigger volume', 'year 6 safeguard trigger volume', 'year 7 safeguard trigger volume', 'year 8 safeguard trigger volume', 'year 9 safeguard trigger volume', 'year 10 safeguard trigger volume', 'year 1 safeguard trigger rate', 'year 2 safeguard trigger rate', 'year 3 safeguard trigger rate', 'year 4 safeguard trigger rate', 'year 5 safeguard trigger rate', 'year 6 safeguard trigger rate', 'year 7 safeguard trigger rate', 'year 8 safeguard trigger rate', 'year 9 safeguard trigger rate', 'year 10 safeguard trigger rate', 'safeguard notes'
+			];
+          let output = [];
+
+          const parsed = FTAPortalAPIExample.stratifyHierarchy(hierarchy);
+
+          function dump(node, indent=0) {
+			  let out;
+			  const data = node.data;
+			  if (data.hscode === 'HS') {
+				out = {
+					order: output.length + 1,
+					indent,
+					type: 'hierarchy',
+					agreement,
+					country,
+					'hs code': 'hs2012',
+					description: data.description
+				};
+			  } else if (data.type === 'section' || data.type === 'chapter' || data.type === 'heading') {
+				out = {
+					order: output.length + 1,
+					indent,
+					type: data.type,
+					agreement,
+					country,
+					'hs code': data.hscode,
+					description: data.description
+				};
+				if (data.type === 'heading') {
+					const subData = subheadingsData[data.hscode];
+					if (subData) {
+						node.children = FTAPortalAPIExample.stratifyHeadingDetails(data, subData).children;
+					}
+				}
+			  } else {
+				  out = {
+					order: output.length + 1,
+					indent,
+					type: data.tariffs? 'tariff': 'subheading',
+					agreement,
+					country,
+					'hs code': FTAPortalAPIExample.uglifyHSCode(data.hscode, false, false),
+					description: data.description
+				};
+
+				if (data.tariffs)
+				  {
+					let row = data.tariffs;
+					if (row.default.baseRate)
+					{
+					  out['base rate'] = TariffFormula.parse(row.default.baseRate).friendly;
+					}
+					row.default.rates.forEach(function (rate, index)
+					{
+					  out[`year ${index + 1} rate`] = TariffFormula.parse(rate).friendly;
+					});
+
+					if (row.default.notes)
+					{
+					  out['general notes'] = row.default.notes;
+					}
+					if (row.quota)
+					{
+					  row.quota.quantity.forEach(function (rate, index)
+					  {
+						out[`year ${index + 1} quota volume`] = TariffFormula.parse(rate).friendly;
+					  });
+					  row.quota.outRates.forEach(function (rate, index)
+					  {
+						out[`year ${index + 1} out quota rate`] = TariffFormula.parse(rate).friendly;
+					  });
+					  if (row.quota.notes)
+					  {
+						out['quota notes'] = row.quota.notes;
+					  }
+					}
+					if (row.safeguard)
+					{
+					  row.safeguard.quantity.forEach(function (rate, index)
+					  {
+						out[`year ${index + 1} safeguard trigger volume`] = TariffFormula.parse(rate).friendly;
+					  });
+					  row.safeguard.outRates.forEach(function (rate, index)
+					  {
+						out[`year ${index + 1} safeguard trigger rate`] = TariffFormula.parse(rate).friendly;
+					  });
+					  if (row.safeguard.notes)
+					  {
+						out['safeguard notes'] = row.safeguard.notes;
+					  }
+					}
+          // console.log(row.productSpecificRules);
+          const psr = TariffPSR.parse(row.productSpecificRules, agreementData.rulesOfOrigin, {hscode: data.hscode});
+          const categories = {};
+          const categoryTop = {};
+          psr.questions.forEach(question => categories[question.itemIf] = question.parentCategory);
+
+
+          function findCategory(tree)
+          {
+            if (tree.or || tree.and)
+            {
+              let category = [];
+              (tree.or || tree.and).map(rule => {
+                const cat = findCategory(rule);
+                categoryTop[cat] = rule;
+                rule.category = cat;
+                category.push(cat);
+              });
+              // category = category.filter(i => i);
+              if (category.length > 1 && category.filter(c => c !== category[0]).length > 0) {
+                return undefined;
+              } else {
+                tree.category = category[0];
+                categoryTop[category[0]] = tree;
+                return category[0];
+              }
+            }
+
+            return categories[tree.code];
+          }
+
+          findCategory(psr.tree);
+          // console.log(psr, row.productSpecificRules,categoryTop);
+					psr.categories.forEach(function(cat)
+					{
+            if (categoryTop[cat.itemIf]) {
+              out[`product specific${{C1: ' wholly obtained ',C2: ' ', C3: ' chemical ', C4: ' de minimis '}[cat.itemIf]}rules`] = dumpHelper(categoryTop[cat.itemIf]);
+            }
+            // if (cat.friendlyRules)
+					  // {
+						// out[`product specific${{C1: ' wholly obtained ',C2: ' ', C3: ' chemical ', C4: ' de minimis '}[cat.itemIf]}rules`] = cat.friendlyRules;
+					  // }
+					});
+					if (row.options)
+					{
+						if (row.options.showChart === false) {
+							out['no chart indicator'] = '1';
+						}
+						if (row.options.showData === false) {
+							out['no data indicator'] = '1';
+						}
+						if (row.options.graphDespiteComplex === true) {
+							out['graph despite complex indicator'] = '1';
+						}
+						if (row.options.explanation) {
+							out['rate explanation override'] = row.options.explanation;
+						}
+
+					}
+				  }
+
+			  }
+
+			  output.push(out);
+
+			  if (node.children && node.children.length > 0)
+			  {
+				  node.children.forEach(child => dump(child, indent + 1));
+			  }
+		  }
+
+		  dump(parsed);
+
+		  console.log(output);
+
+          output.forEach((row, index) =>
+          {
+			      output.order = index + 1;
+            Object.keys(row).forEach(head =>
+            {
+              if (headings.indexOf(head) === -1)
+              {
+                headings.push(head);
+              }
+            });
+          });
+
+          dumpExcelData(headings, output);
+
+        }
+
+        function dumpExcelData(headings, output)
+        {
+          let wb = {
+            Sheets : {},
+            SheetNames: []
+          };
+
+          let ws = {};
+
+          let row = 0;
+          headings.forEach((head, index) =>
+          {
+            ws[XLSX.utils.encode_cell({c: index, r: row})] = {
+              t: 's',
+              v: head.split(' ').map(x => x.substr(0, 1).toUpperCase() + x.substr(1)).join(' ')
+            };
+          });
+          row++;
+
+          output.forEach(item =>
+          {
+            Object.keys(item).forEach(head =>
+            {
+              ws[XLSX.utils.encode_cell({c: headings.indexOf(head), r: row})] = {
+                t: 's',
+                v: item[head]
+              };
+            });
+            row++;
+          });
+
+          ws['!ref'] = XLSX.utils.encode_range({
+            s: {
+              c: 0,
+              r: 0
+            },
+            e: {
+              c: headings.length,
+              r: output.length + 1
+            }
+          });
+
+          let ws_name = agreement + '_' + country;
+          wb.SheetNames.push(ws_name);
+          wb.Sheets[ws_name] = ws;
+
+          let wopts = {
+            bookType: 'xlsx',
+            bookSST:false,
+            type:'binary'
+          };
+
+          downloadData(XLSX.write(wb, wopts), ws_name + '.xlsx');
+        }
+
+        function downloadData(data, filename)
+        {
+          // http://stackoverflow.com/questions/10473932/browser-html-force-download-of-image-from-src-dataimage-jpegbase64
+          //data = atob(data);
+          var arraybuffer = new ArrayBuffer(data.length);
+          var view = new Uint8Array(arraybuffer);
+          for (var i=0; i<data.length; i++) {
+              view[i] = data.charCodeAt(i) & 0xff;
+          }
+          try
+          {
+            // This is the recommended method:
+            var blob = new Blob([arraybuffer], {type: 'application/octet-stream'});
+          } catch (e) {
+              // The BlobBuilder API has been deprecated in favour of Blob, but older
+              // browsers don't know about the Blob constructor
+              // IE10 also supports BlobBuilder, but since the `Blob` constructor
+              //  also works, there's no need to add `MSBlobBuilder`.
+              var bb = new (window.WebKitBlobBuilder || window.MozBlobBuilder);
+              bb.append(arraybuffer);
+              var blob = bb.getBlob('application/octet-stream'); // <-- Here's the Blob
+          }
+          var url = (window.webkitURL || window.URL).createObjectURL(blob);
+
+          d3.select('#downloads').a(filename).attr('href', url).classed('downloadLink', true).attr('download', filename);
+          d3.select('#dumpDumpData').hide();
+          d3.select('#dumpData').show();
+          d3.selectAll('.download').show();
+        }
+
+        showAgreementSelection();
+
+        d3.select('#dumpData').on('click', dumpData);
+
+      });
+
+
+                let dumpHelper = function (tree)
+                {
+                  var output = '';
+
+                  if (tree.or)
+                  {
+                    output = `${dumpHelper(tree.or[0])} or; ${dumpHelper(tree.or[1])}`;
+                  }
+                  if (tree.and)
+                  {
+                    output = `${dumpHelper(tree.and[0])} and; ${dumpHelper(tree.and[1])}`;
+                  }
+
+                  if (tree.code)
+                  {
+                    output += tree.code;
+                  }
+
+                  if (tree.parameter)
+                  {
+                    output += ` ${tree.parameter}`;
+                  }
+
+                  if (tree.from)
+                  {
+                    output += ' from ' + hslistToEncoded(tree.from);
+                  }
+
+                  if (tree.text)
+                  {
+                    output += ` text '${tree.text}'`;
+                  }
+
+                  if (tree.except)
+                  {
+                    output += ' except ' + hslistToEncoded(tree.except);
+                  }
+
+                  if (tree.condition)
+                  {
+                    tree.condition.forEach(condition => output += ` condition '${condition}'`);
+                  }
+
+                  if (tree.label)
+                  {
+                    output += ` label '${tree.label}'`;
+                  }
+
+                  if (tree.details)
+                  {
+                    output += ` details '${tree.details}'`;
+                  }
+
+                  if (tree.silent)
+                  {
+                    output = `silent ${output}`;
+                  }
+
+                  if (tree.friendly)
+                  {
+                    Object.keys(tree.friendly)
+                      .forEach(category =>
+                      {
+                        output = `(${output}) friendly ${category} '${tree.friendly[category]}'`;
+                      });
+                  }
+
+                  return output;
+                };
+
+                function hslistToEncoded(except)
+{
+  if (except.range)
+  {
+    return except.range.map(hslistToEncoded)
+      .join('-');
+  }
+
+  if (except.list)
+  {
+    return except.list.map(hslistToEncoded)
+      .join(',');
+  }
+
+  let output = '' + except.code;
+
+  if (except.material)
+  {
+    output += ` material '${except.material}'`;
+  }
+
+  if (except.extra)
+  {
+    output += ` extra '${except.extra}'`;
+  }
+
+  return output;
+}
+
+
+    </script>
+  </div>
+  <div id="footer"></div>
+
+</body>
+</html>
